@@ -1,0 +1,8 @@
+langchain_openai
+langchain_core
+python_dotenv
+streamlit
+langchain_community
+langserve
+fitz
+chromadb
