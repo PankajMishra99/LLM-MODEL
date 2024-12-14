@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <style>
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background-color: #f4f4f4;  /* Background color */
+        }
+        .right-align{
+            text-align: right;
+        }
+        .center-content{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 20px;
+        }
+        .from-container{
+            width: 80%;
+            padding: 20px;
+            border-radius: 10px;
+            background-color: darkgrey;
+        }
+        .button{
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .button:hover{
+            background-color: cadetblue;
+        }
+    </style>
+    <div class = "container">
+        <div class ="header">Welcome to the Login Page</div>
+        <div class = "form"></div>
+        <h3>Login</h3>
+        <form action="#" method="post">
+            <input type="text" id="login_username",placeholder="Username">
+            <input type = "password" id ="login_password" placeholder="Password">
+            <button class ="button" onclick="onLogicClick()">Login</button>
+        </form>
+
+    </div>
+    <h3>Register</h3>
+    <form action ="#",action="Post">
+        <input type="text" id="first_name" placeholder="First Name">
+        <input type ="text" id="last_name" placeholder="Last Name">
+        <input type = "text" id="username" placeholder="Username">
+        <input type ="password" id="password" placeholder="Password">
+        <input type="password" id="confirm_password" placeholder="Confirm Password">
+        <button class="button" onclick="onRegisterClick()">Register</button>
+        </inputt>
+    </form>
+    
+</body>
+</html>

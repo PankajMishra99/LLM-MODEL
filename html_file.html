@@ -1,0 +1,88 @@
+<!--can be added for  Improvements to Consider
+Cross-Browser Support:
+Add polyfills for better compatibility.
+Loading Indicators:
+Show a spinner while waiting for a response.
+Backend Setup:
+Ensure the /Process voice endpoint is functional.-->
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Input Button</title>
+    <style>
+        body {
+           font-family:Arial, Helvetica, sans-serif;
+           margin-top: 50px;
+           text-align: center; 
+        }
+        .voice-btn{
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color:white;
+            border: none;
+            border-radius: 5px;
+        }
+        .voice-btn:hover {
+            background-color: #45a049;
+        }
+        #output {
+            margin-top:20px ;
+            width : 80%;
+            padding: 10px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Voice input example</h1>
+    <button class="voice-btn" onclick="startRecognition('output')">🎙️ Speak</button>
+    <textarea id="output" rows="5" placeholder=" "></textarea>
+
+    <script>
+        function startRecognition(){
+        const voiceBtn = document.getElementById('voice-btn');
+        const output = document.getElementById('output');
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang= 'en-US'
+        recognition.start();
+
+        recognition.onresult = function(event){
+            const voice_input = event.result[0][0].transcript;
+            output.innerHTML = `<strong> said: </strong> ${voice_input}`;
+
+            // send the voice input to the python backend
+            fetch('/Process voice',{
+                method:'POST',
+                headers:{
+                    'content-Type': 'application/json'
+                },
+                body: JSON.stringify({voice_input})
+
+            })
+            .then(reponse => response.json())
+            .then(data => {
+                output.innerHTML += `<br><strong> Model Response: </strong> ${data.reponse}`;
+            })
+            .catch(error=>{
+                console.error('Error: ',error)
+            });
+
+        };
+        recognition.onerror= function (event){
+            console.error('Speech Recognition error: ', event.error);
+            output.innerHTML =`<strong>Error:</strong> ${event.error}`;
+        };
+
+        
+    }
+    </script>
+    
+</body>
+</html>

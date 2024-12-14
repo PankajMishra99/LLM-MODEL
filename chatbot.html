@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to the Chatbot</title>
+</head>
+<body>
+    <h1>{{username}}</h1>
+    <p>Please enter the question below: </p>
+    <form method="POST">
+        <textarea name="question" placeholder="Enter your question.."></textarea>
+        <button type="submit">Submit</button>
+    </form>
+    <a href = "{{url_for('logout')}}">Logout</a>
+    
+</body>
+</html>

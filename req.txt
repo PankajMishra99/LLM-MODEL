@@ -1,0 +1,18 @@
+langchain_openai
+langchain_core
+python_dotenv
+streamlit
+langchain_community
+langserve
+pymupdf
+flask
+langchain
+moviepy
+ faiss-cpu
+ pytesseract
+ streamlit
+ pymongo
+ transformers
+ SpeechRecognition
+ python-docx
+ nltk
