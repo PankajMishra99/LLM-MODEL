@@ -1,13 +1,20 @@
 import flask
 from flask import Flask,render_template,url_for,request,Response,session,redirect,flash
 import os
-from model import web_chat
+# from model import web_chat
 import hashlib
 import pymongo
+import model1
+from werkzeug.middleware.proxy_fix import ProxyFix
+import logging
+
 key =os.getenv('secrets_key')
 app = Flask(__name__,template_folder="templates")
 app.secret_key=key
 mongo_uri = os.getenv('mongo_uri')
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Increase if necessary
+
 
 if not key:
     raise ValueError("Secret key not set in the environment variables..")
@@ -38,19 +45,40 @@ def verify_password(stored_password:str,provided_password:str)->str:
     return hashlib.sha256(provided_password.encode('utf-8')).hexdigest()==stored_password
 
 
-@app .route('/')
+@app.route('/')
 def home():
     if "username" in session:
         return redirect('chatbot')
     else:
         return redirect('login')
     
-@app .route('/chatbot')
+    
+
+@app.route('/chatbot', methods=['GET', 'POST'])
 def chatbot():
+    username=session['username']
+    logging.basicConfig(level=logging.DEBUG)
     if 'username' not in session:
-        flash("need to login first","error")
-        return render_template('login')
-    return render_template('chatbot.html',username=session['username'])
+        flash("You need to login first", "error")
+        return redirect(url_for('login'))
+    
+    answer = ''
+    if request.method == 'POST':
+        question = request.form.get('question')
+        # logging.debug(f"Question received: {question}")
+        logging.debug(f"Form data: {request.form}")
+        model_type = 'llama3'
+        if question:
+            try:
+                from model1 import flask_chat,llm_model,qa_chain_function
+                answer = qa_chain_function(question, model_type)
+                logging.debug(f"Answer generated: {answer}")
+            except Exception as e:
+                logging.error(f"Error while processing chatbot question: {e}")
+                answer = "An error occured. please try again later."
+    
+    return render_template('chatbot.html', answer=answer)
+
     
 @app .route('/register',methods = ['POST','GET'])
 def register():
@@ -92,7 +120,7 @@ def login():
         password = request.form['password']
 
         user = user_collection.find_one({'Username': username})
-        if user and verify_password(user['password'],password):
+        if user and verify_password(user['Password'],password):
             session['username']= username
             flash("login successfull",'success')
             return redirect(url_for('chatbot'))
@@ -118,8 +146,11 @@ def logout():
 def not_found(error):
     return "Page Not found !",404
 
-if __name__=="__main__":
+
+
+if __name__== "__main__":
     app.run(debug=True)
+
 
 
 

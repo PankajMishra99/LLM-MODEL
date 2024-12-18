@@ -40,7 +40,9 @@ with open("param.json",'r') as file:
     config =json.load(file)
 
 flask_available=config.get("frontend","").lower()=="flask"
-app=Flask(__name__) if flask_available else None
+app = Flask(__name__) 
+
+
 
 #read the input from pdf and change in text.
 def pdf_to_text(filename):
@@ -64,6 +66,7 @@ def audio_text(filename):
         audio = recognizer.record(file)
     text = recognizer.recognize_google(audio)
     return text
+
 from tempfile import NamedTemporaryFile
 def video_text(filename):
     video = VideoFileClip(filename)
@@ -107,26 +110,22 @@ def main_text(file, file_type):
         raise ValueError(f"Error processing file: {e}")
 
         
-def clean_text(file, file_type=["pdf", "png", "jpg",'jpeg', "wav", "mp4", "txt", "docx"]):
-    # for file_type in file_types:
-        try:
-            text = main_text(file, file_type)
-            if text:
-                words=[word for word in text.split()]
-                cleaned_text = ' '.join(words)
-                return cleaned_text
-        except Exception as e:
-            print(f"Failed to process {file_type}:{e}")
+def clean_text(text):
+    try:
+        words = [word for word in text.split()]
+        return ' '.join(words)
+    except Exception as e:
+        raise ValueError(f"Error during text cleaning: {e}")
     # return "Unable to process the file"
 
 # print(pdf_to_text(file_path))
     
-def chunk_text(texts, file=file_path, file_type=["pdf", "png", "jpg",'jpeg', "wav", "mp4", "txt", "docx"]):
+def chunk_text(text):
+    chunk_size= int(len(text))
     chunks = []
-    for text in texts:
-        text = clean_text(file)  
-        chunks.append(text) 
-        return chunks
+    for i in range(0, len(text), chunk_size):
+        chunks.append(text[i:i + chunk_size])
+    return chunks
 ##Need to checkt the chynk text or clean text for inegrate the main_text()
 
 def model_name(model_name='sentence-transformers/all-MiniLM-L6-v2'):
@@ -136,9 +135,16 @@ def model_name(model_name='sentence-transformers/all-MiniLM-L6-v2'):
 
 
 def get_embedding(text):
-    embeddings = OllamaEmbeddings(model="llama3",)
-    embedding = embeddings.embed_query(text)
+    embeddings = OllamaEmbeddings(model="llama3")
+    
+    # Ensure 'text' is a string, not a list
+    if isinstance(text, list):
+        text = " ".join(text)  # Join list items into a single string if necessary
+    
+    print(f"Embedding query: {text}")  # Debugging line
+    embedding = embeddings.embed_query(text)  # Pass the string to embed_query
     return embedding
+
 
 # print(get_embedding("what is the Voltage"))
 
@@ -179,41 +185,35 @@ def retrieve_from_faiss(query,index, k=5):
 
 
 def llm_model(question, model_type):
-    # Initialize the LLM model
-    llm = OllamaLLM(model=model_type)
+    try:
+        llm = OllamaLLM(model=model_type)
+        embeddings = OllamaEmbeddings(model=model_type)
 
-    # Define the embedding function
-    embeddings = OllamaEmbeddings(model=model_type)
+        text_data = [question]
+        vectorstore = FAISS.from_texts(texts=text_data, embedding=embeddings)
+        retriever = vectorstore.as_retriever()
 
-    docs = InMemoryVectorStore.from_texts(
-        [question],  
-        embedding=embeddings
-    )
-    text_data=[question]
-    # Set up FAISS vector store
-    vectorstore = FAISS.from_texts(texts=text_data,embedding=embeddings)
+        prompt_template = PromptTemplate(
+            input_variables=["question", "context"],
+            template="Context: {context}\n\nQ: {question}\nA: ",
+        )
 
-    # Create retriever
-    retriever = vectorstore.as_retriever()
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            retriever=retriever,
+            chain_type="stuff",
+            chain_type_kwargs={"prompt": prompt_template},
+        )
 
-    # Define the prompt template
-    prompt_template = PromptTemplate(
-        input_variables=["question", "context"],
-        template="Context: {context}\n\nQ: {question}\nA: ",
-    )
+        response = qa_chain.invoke(question)
+        print(f"Response: {response}")  # Debugging: Check what the response looks like
+        
+        # Assuming the response contains an answer as text, directly return it
+        return response  # If the response is not a dictionary, return the text directly
 
-    # Initialize RetrievalQA chain
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        retriever=retriever,
-        chain_type="stuff",
-        chain_type_kwargs={"prompt": prompt_template},
-    )
+    except Exception as e:
+        raise ValueError(f"Error in LLM model: {e}")
 
-    # Query the chain
-    response = qa_chain.invoke(question)
-    # response=response['question']
-    return response
 
 
 # Test the model
@@ -222,11 +222,12 @@ def llm_model(question, model_type):
 
 
 
-def qa_chain_function(question, model_type, text):
+
+def qa_chain_function(question, model_type):
     try:
         # model, tokenizer = model_name()
-        # text=[question]
-        chunks = chunk_text(text)
+        text1=[question]
+        chunks = chunk_text(text1)
         index = index_vector(chunks)
         I, D = retrieve_from_faiss(question, index)
         if len(I[0]) == 0:
@@ -253,10 +254,10 @@ def qa_chain_function(question, model_type, text):
     except Exception as e:
         raise ValueError(f"Error in QA chain: {e}")
 
-# print(qa_chain_function("Name of Prime Minister of India.","llama3"))
+# print(qa_chain_function("what is the voltage?.","llama3"))
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/chatbot", methods=["GET", "POST"])
 def flask_chat():
     answer = ""
     if request.method == "POST":
@@ -271,19 +272,16 @@ def flask_chat():
                 file_path =file.filename
                 extract_text = main_text(file_path,file_type)
                 text =clean_text(extract_text)
-                answer = qa_chain_function(question, 'llama3',text)
+                answer = qa_chain_function(question, 'llama3')
                 return answer
         except Exception as e:
             print(f"Error during processing: {e}")
-            answer = "An error occurred. Please try again later."
+            answer = "An error occurred. Please try again later......"
 
-#     return render_template("chatbot.html", answer=answer)
-# if __name__=="__main__":
-#      flask_chat()
+    return render_template("chatbot.html", answer=answer)
 
 
-
-# # for web interfacing..
+# # # for web interfacing..
 # def web_chat():
 #     st.title("AI to Question Answer Chatbot..")
 
@@ -312,9 +310,10 @@ def flask_chat():
 #         web_chat()
 
 
+
 # if __name__=="__main__":
-#     # get_embedding("what is the voltage",'')
-#     llm_model("what is the voltage","llama2")
+#     # app.run(debug=True)
+#     print(qa_chain_function("Name of Prime Minister of India.","llama3"," "))
 
 
 
