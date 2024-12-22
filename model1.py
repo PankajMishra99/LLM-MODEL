@@ -32,7 +32,6 @@ from langchain_community.document_loaders import TextLoader
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["LANGCHAIN_TRACING_V2"]="True"
 
-file_path =r"C:\Users\Pankaj Mishra\Downloads\basicElectronics.pdf"
 
 # from file_flask import user_collection,client,register,login
 
@@ -184,9 +183,9 @@ def retrieve_from_faiss(query,index, k=5):
 # #llm model , need to initlized the model_type in the json format.
 
 
-def llm_model(question, model_type):
+def llm_model(question, model_type,temperature=0.3):
     try:
-        llm = OllamaLLM(model=model_type)
+        llm = OllamaLLM(model=model_type,temperature=temperature,top_p=0.2,repetition_penalty=2)
         embeddings = OllamaEmbeddings(model=model_type)
 
         text_data = [question]
@@ -249,7 +248,7 @@ def qa_chain_function(question, model_type):
                     raise ValueError("Empty 'result' key in response.")
             else:
                 raise ValueError("Response is not a dictionary.")
-
+        answer = list(set(answer))
         return "\n".join(answer).strip()
     except Exception as e:
         raise ValueError(f"Error in QA chain: {e}")
