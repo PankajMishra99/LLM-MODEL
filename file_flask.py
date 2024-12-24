@@ -1,12 +1,30 @@
 import flask
 from flask import Flask,render_template,url_for,request,Response,session,redirect,flash
 import os
-# from model import web_chat
 import hashlib
 import pymongo
-import model1
 from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
+import json
+
+
+with open ("param.json",'r') as file:
+    config = json.load(file)
+
+
+config_db = config["mongodb"]["uri"]
+config_username = config["mongodb"]["username"]
+config_password = config["mongodb"]["password"]
+config_database = config["mongodb"]["database"]
+config_collection = config["mongodb"]["collection"]
+config_timeout_ms = config["mongodb"]["server_selection_timeout_ms"]
+config_source = config["mongodb"]["auth_source"]
+config_replica = config["mongodb"]["replica_set"]
+
+# for flask app..
+config_host = config["app"]["flask_config"]["host"]
+config_port = config["app"]["flask_config"]["port"]
+
 
 key =os.getenv('secrets_key')
 app = Flask(__name__,template_folder="templates")
@@ -14,6 +32,8 @@ app.secret_key=key
 mongo_uri = os.getenv('mongo_uri')
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Increase if necessary
+
+
 
 
 if not key:
@@ -26,8 +46,8 @@ if not mongo_uri:
 try:
     client = pymongo.MongoClient(mongo_uri)
     print("connected to Mongodb")
-    db = client['db1']
-    user_collection = db['collect']
+    db = client[config_database]             # will replace by config_database
+    user_collection = db[config_collection]   # same as ..
     print("Database and collection accessible")
 except pymongo.errors.ConnectionError as e:
     print(f"Failed to connect to MongoDB: {e}")
@@ -37,11 +57,11 @@ except pymongo.errors.ConnectionError as e:
 
 # print(mongo_uri)
 # hasshing password for the security purpose..
-def hash_password(password:str)->str:
+def hash_password(password:str=config_password)->str:
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
 
-def verify_password(stored_password:str,provided_password:str)->str:
+def verify_password(stored_password:str=config_password,provided_password:str=config_password)->str:
     return hashlib.sha256(provided_password.encode('utf-8')).hexdigest()==stored_password
 
 
@@ -56,31 +76,43 @@ def home():
 
 @app.route('/chatbot', methods=['GET', 'POST'])
 def chatbot():
-    username=session['username']
     logging.basicConfig(level=logging.DEBUG)
+    
     if 'username' not in session:
         flash("You need to login first", "error")
-        return redirect(url_for('login'))
-    
-    answer = ''
+        return render_template('login.html')
+
+    answer = ""
     if request.method == 'POST':
         question = request.form.get('question')
-        # logging.debug(f"Question received: {question}")
-        logging.debug(f"Form data: {request.form}")
-        model_type = 'llama3'
+        logging.debug(f"Question received: {question}")
+        
         if question:
             try:
-                from model1 import flask_chat,llm_model,qa_chain_function
-                answer = qa_chain_function(question, model_type)
-                logging.debug(f"Answer generated: {answer}")
+                # Get the file and question from the form
+                file = request.files.get("file")
+                file_type = request.form.get("file_type")
+                logging.debug(f"Receved_file : {file} and File Type : {file_type}")
+                
+                # Process the file and generate an answer if a file and question are provided
+                if  question:
+                    from model1 import main_text,qa_chain_function,flask_chat
+                    # extract_text = main_text(file, file_type)  # Assuming this is the file processing function
+                    # logging.debug(f"Extracted text : {extract_text}")
+                    answer = qa_chain_function(question, 'llama3' )  # Replace this with your actual logic
+                    # answer = list(set(answer))
+                    logging.debug(f"Answer generated: {answer}")
+                    return render_template('chatbot.html', username=session['username'], answer=answer)
+
+
             except Exception as e:
-                logging.error(f"Error while processing chatbot question: {e}")
-                answer = "An error occured. please try again later."
+                print(f"Error: {e}")
+                answer = "An error occurred. Please try again later."
     
     return render_template('chatbot.html', answer=answer)
 
     
-@app .route('/register',methods = ['POST','GET'])
+@app.route('/register',methods = ['POST','GET'])
 def register():
     if request.method=='POST':
         first_name = request.form['first_name']
@@ -149,7 +181,7 @@ def not_found(error):
 
 
 if __name__== "__main__":
-    app.run(debug=True)
+    app.run(debug=True,host=config_host,port=config_port)
 
 
 
