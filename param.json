@@ -1,0 +1,121 @@
+{
+    "llm": {
+        "provider": "ollama",
+		"model": "llama3.2",
+        "embedding_model": "OllamaEmbeddings",
+        "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+		"nearest_vector": 5,
+        "model_parameters": {
+            "temperature": 0.3,
+            "max_tokens": 512,
+            "top_p": 0.2,
+            "frequency_penalty": 2,
+            "presence_penalty": 0.0,
+            "batch_size": 32,
+            "timeout": 30,
+            "penalize_newline": true,
+            "stop": ["\n", "user:"],
+            "num_batch": 2,
+            "vocab_only": false,
+            "use_mmap": true,
+            "use_mlock": false,
+            "num_thread": 8,
+            "seed" :42,
+            "repeat_last_n": 33
+
+
+        },
+        "api_settings": {
+            "api_key": "your-ollama-api-key",
+            "api_url": "https://api.ollama.ai/v1",
+            "output_format": "text"
+        },
+        "local_cache": {
+            "enabled": true,
+            "cache_path": "cache/llm"
+        }
+    },
+    "mongodb": {
+        "uri": "mongodb://localhost:27017",
+        "username": "admin",
+        "password": "admin",
+        "database": "llm_db",
+        "collection": "user_data",
+        "connection_timeout_ms": 2000,
+        "server_selection_timeout_ms": 5000,
+        "auth_source": "admin",
+        "replica_set": "rs0"
+    },
+    "app": {
+        "flask_config": {
+            "frontend": ["flask","streamlit"],
+            "host": "127.0.0.1",
+            "port": 5000,
+            "debug": true,
+            "secret_key": "your-secret-key"
+        },
+        "folders": {
+            "template_folder": "templates",
+            "static_folder": "static",
+            "upload_folder": "uploads"
+        },
+        "logging": {
+            "log_to_file": true,
+            "log_level": "DEBUG",
+            "log_file_path": "logs/app.log"
+        },
+        "cors": {
+            "enabled": true,
+            "allowed_origins": ["http://localhost:3000"]
+        },
+        "csrf_protection": true
+    },
+    "security": {
+        "jwt_secret_key": "your-jwt-secret-key",
+        "session_timeout_minutes": 30,
+        "password_hashing_algorithm": "bcrypt",
+        "password_salt": "your-salt-value",
+        "rate_limiting": {
+            "requests_per_minute": 60
+        }
+    },
+    "features": {
+        "enable_user_registration": true,
+        "enable_file_uploads": true,
+        "file_uploads": {
+            "allowed_extensions": ["txt", "csv", "json", "png", "jpg", "pdf"],
+            "max_file_size_mb": 5
+        },
+        "analytics": {
+            "enabled": true,
+            "analytics_service_url": "https://analytics.example.com"
+        },
+        "api_access": {
+            "enabled": true,
+            "api_key_length": 32
+        }
+    },
+    "third_party_services": {
+        "email_service": {
+            "enabled": true,
+            "smtp_host": "smtp.example.com",
+            "smtp_port": 587,
+            "username": "your-email@example.com",
+            "password": "your-email-password",
+            "use_tls": true,
+            "from_email": "noreply@example.com"
+        },
+        "cloud_storage": {
+            "provider": "AWS S3",
+            "bucket_name": "llm-files",
+            "access_key": "your-access-key",
+            "secret_key": "your-secret-key",
+            "region": "us-east-1"
+        }
+    },
+    "development": {
+        "enable_debug_toolbar": true,
+        "auto_reload_templates": true,
+        "hot_reload": true
+    }
+}
