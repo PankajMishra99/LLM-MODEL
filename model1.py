@@ -38,6 +38,23 @@ os.environ["LANGCHAIN_TRACING_V2"]="True"
 with open("param.json",'r') as file:
     config =json.load(file)
 
+config_model_name = config["llm"]["model_name"]
+config_embedding = config["llm"]["embedding_model"]
+config_temperature = config["llm"]["model_parameters"]["temperature"]
+config_token = config["llm"]["model_parameters"]["max_tokens"]
+config_top_p = config["llm"]["model_parameters"]["top_p"]
+config_frequency = config["llm"]["model_parameters"]["frequency_penalty"]
+config_presence = config["llm"]["model_parameters"]["presence_penalty"]
+config_batch_size = config["llm"]["model_parameters"]["batch_size"]
+
+config_model = config["llm"]["model"]
+config_neareset = config["llm"]["nearest_vector"]
+
+config_parameter = config["llm"]["model_parameters"]
+
+
+
+
 flask_available=config.get("frontend","").lower()=="flask"
 app = Flask(__name__) 
 
@@ -127,14 +144,14 @@ def chunk_text(text):
     return chunks
 ##Need to checkt the chynk text or clean text for inegrate the main_text()
 
-def model_name(model_name='sentence-transformers/all-MiniLM-L6-v2'):
+def model_name(model_name=config_model_name):
     model= AutoModel.from_pretrained(model_name)
     tokenizer= AutoTokenizer.from_pretrained(model_name)
     return model,tokenizer
 
 
 def get_embedding(text):
-    embeddings = OllamaEmbeddings(model="llama3")
+    embeddings = OllamaEmbeddings(model=config_model)
     
     # Ensure 'text' is a string, not a list
     if isinstance(text, list):
@@ -171,7 +188,7 @@ def index_vector(texts):
 
 # print(print(index_vector("What is the voltage")))
 
-def retrieve_from_faiss(query,index, k=5):
+def retrieve_from_faiss(query,index, k=config_neareset):
     query_vector = np.array(get_embedding(query)).reshape(1,-1)
     distances, indices = index.search(query_vector,k)
     return  indices,distances
@@ -183,9 +200,9 @@ def retrieve_from_faiss(query,index, k=5):
 # #llm model , need to initlized the model_type in the json format.
 
 
-def llm_model(question, model_type,temperature=0.3):
+def llm_model(question, model_type,temperature=config_temperature):
     try:
-        llm = OllamaLLM(model=model_type,temperature=temperature,top_p=0.2,repetition_penalty=2)
+        llm = OllamaLLM(model=model_type,temperature=temperature,top_p=config_top_p,repetition_penalty=config_frequency,max_new_tokens=50)
         embeddings = OllamaEmbeddings(model=model_type)
 
         text_data = [question]
@@ -280,39 +297,39 @@ def flask_chat():
     return render_template("chatbot.html", answer=answer)
 
 
-# # # for web interfacing..
-# def web_chat():
-#     st.title("AI to Question Answer Chatbot..")
+# # # # for web interfacing..
+# # def web_chat():
+# #     st.title("AI to Question Answer Chatbot..")
 
-#     file_uploader = st.file_uploader("File_uploader",type=["pdf", "png", "jpg", "wav", "mp4", "txt", "docx"])
-#     file_type = st.selectbox("File Type",["pdf", "png", "jpg", "wav", "mp4", "txt", "docx"])
+# #     file_uploader = st.file_uploader("File_uploader",type=["pdf", "png", "jpg", "wav", "mp4", "txt", "docx"])
+# #     file_type = st.selectbox("File Type",["pdf", "png", "jpg", "wav", "mp4", "txt", "docx"])
     
-#     #if file_uploader:
-#     extracted_text = main_text(file_uploader, file_type)
-#     question  = st.text_input("Please enter the question: ")
-#        # if question:
-#     answer = qa_chain_function(question,extracted_text)
-#     st.write("Answer : ",answer)
-#     return answer
+# #     #if file_uploader:
+# #     extracted_text = main_text(file_uploader, file_type)
+# #     question  = st.text_input("Please enter the question: ")
+# #        # if question:
+# #     answer = qa_chain_function(question,extracted_text)
+# #     st.write("Answer : ",answer)
+# #     return answer
 
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser(description="Run Chatbot using Flask or Streamlit.")
-#     parser.add_argument("--interface",
-#         type=str,
-#         default="flask",
-#         choices=["flask",'streamlit']
-#     )
-#     args = parser.parse_args()
-#     if args.interface=="flask":
-#         app.run(debug=True)
-#     elif  args.interface=="streamlit":
-#         web_chat()
+# # if __name__ == "__main__":
+# #     parser = argparse.ArgumentParser(description="Run Chatbot using Flask or Streamlit.")
+# #     parser.add_argument("--interface",
+# #         type=str,
+# #         default="flask",
+# #         choices=["flask",'streamlit']
+# #     )
+# #     args = parser.parse_args()
+# #     if args.interface=="flask":
+# #         app.run(debug=True)
+# #     elif  args.interface=="streamlit":
+# #         web_chat()
 
 
 
-# if __name__=="__main__":
-#     # app.run(debug=True)
-#     print(qa_chain_function("Name of Prime Minister of India.","llama3"," "))
+# # if __name__=="__main__":
+# #     # app.run(debug=True)
+# #     print(qa_chain_function("Name of Prime Minister of India.","llama3"," "))
 
 
 
