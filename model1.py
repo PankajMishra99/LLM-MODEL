@@ -26,13 +26,16 @@ from flask import Flask,render_template,url_for,request,Response,session,redirec
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_core.vectorstores import InMemoryVectorStore
 import argparse
+from pathlib import Path
+from werkzeug.utils import secure_filename
+import logging
 
 import os
 from langchain_community.document_loaders import TextLoader
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["LANGCHAIN_TRACING_V2"]="True"
 
-
+pytesseract.tesseract_cmd = r"C:\Users\Pankaj Mishra\Desktop\llm_model\LLM-MODEL\Tesseract-OCR\tesseract.exe"
 # from file_flask import user_collection,client,register,login
 
 with open("param.json",'r') as file:
@@ -47,6 +50,9 @@ config_frequency = config["llm"]["model_parameters"]["frequency_penalty"]
 config_presence = config["llm"]["model_parameters"]["presence_penalty"]
 config_batch_size = config["llm"]["model_parameters"]["batch_size"]
 
+config_presence = config["llm"]["model_parameters"]["presence_penalty"]
+
+
 config_model = config["llm"]["model"]
 config_neareset = config["llm"]["nearest_vector"]
 
@@ -58,6 +64,15 @@ config_parameter = config["llm"]["model_parameters"]
 flask_available=config.get("frontend","").lower()=="flask"
 app = Flask(__name__) 
 
+app.config['UPLOAD_FOLDER'] =os.path.join(os.getcwd(), "folder")
+app.config['ALLOWED_EXTENSIONS'] = {'pdf', 'png', 'jpg', 'jpeg', 'docx'}
+
+
+# Ensure the upload folder exists
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
 
 
 #read the input from pdf and change in text.
@@ -65,11 +80,12 @@ def pdf_to_text(filename):
     text = ''
     with fitz.open(filename) as pdf:
         for page_num in range(pdf.page_count):
-            page = pdf.load_page(page_num)
-            pix = page.get_pixmap()  # Render page to an image
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            page_text = pytesseract.image_to_string(img)
-            text += page_text
+            page_text = pdf.load_page(page_num)
+            page_text = page_text.get_text()
+            # pix = page.get_pixmap()  # Render page to an image
+            # img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            # page_text = pytesseract.image_to_string(img)
+            text += page_text.strip()
     return text
 def image_to_text(filename):
     img = Image.open(filename)
@@ -108,7 +124,7 @@ def docs_text(filename):
 
 def main_text(file, file_type):
     try:
-        if file_type == 'pdf':
+        if file_type == '.pdf':
             return pdf_to_text(file)
         elif file_type in ['png', 'jpg', 'jpeg']:
             return image_to_text(file)
@@ -124,8 +140,20 @@ def main_text(file, file_type):
             raise ValueError("Unsupported file type")
     except Exception as e:
         raise ValueError(f"Error processing file: {e}")
+    
 
-        
+
+def path_fun():
+    curret_dir = Path.cwd()
+    dynamic_path = curret_dir/"folder"/"basicElectronics.pdf"
+    return dynamic_path
+
+text = path_fun()
+text = main_text(text,'.pdf')
+# print(main_text(text,'pdf'))
+
+
+
 def clean_text(text):
     try:
         words = [word for word in text.split()]
@@ -136,165 +164,326 @@ def clean_text(text):
 
 # print(pdf_to_text(file_path))
     
-def chunk_text(text):
-    chunk_size= int(len(text))
+def chunk_text(text,chunk_size=512):
+    # chunk_size= int(len(text))
     chunks = []
     for i in range(0, len(text), chunk_size):
         chunks.append(text[i:i + chunk_size])
     return chunks
 ##Need to checkt the chynk text or clean text for inegrate the main_text()
 
-def model_name(model_name=config_model_name):
-    model= AutoModel.from_pretrained(model_name)
-    tokenizer= AutoTokenizer.from_pretrained(model_name)
-    return model,tokenizer
 
 
-def get_embedding(text):
-    embeddings = OllamaEmbeddings(model=config_model)
+from transformers import GPT2Tokenizer, GPT2Model
+import numpy as np
+
+def load_model(model_name='gpt2'):
+    """
+    Load the pre-trained GPT-2 model and tokenizer.
+
+    Args:
+    - model_name (str): The name or path to the pre-trained GPT-2 model.
+
+    Returns:
+    - model (GPT2Model): Loaded GPT-2 model.
+    - tokenizer (GPT2Tokenizer): Loaded GPT-2 tokenizer.
+    """
+    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+    tokenizer.pad_token = tokenizer.eos_token  # Set the padding token to the eos_token
+    model = GPT2Model.from_pretrained(model_name)
+    return model, tokenizer
+
+# print(load_model())
+
+def get_embedding(text, model_name='gpt2'):
+    """
+    Generate the embedding for the input text using GPT-2.
+
+    Args:
+    - text (str): Input text to embed.
+    - model_name (str): The name or path to the pre-trained GPT-2 model.
+
+    Returns:
+    - sentence_embedding (numpy.ndarray): Embedding of the input text.
+    """
+    model, tokenizer = load_model(model_name)
+    inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True)
+
+    # Forward pass through GPT-2
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    # Get the embeddings from the last hidden state
+    last_hidden_state = outputs.last_hidden_state  # Shape: [batch_size, seq_length, hidden_size]
     
-    # Ensure 'text' is a string, not a list
-    if isinstance(text, list):
-        text = " ".join(text)  # Join list items into a single string if necessary
-    
-    print(f"Embedding query: {text}")  # Debugging line
-    embedding = embeddings.embed_query(text)  # Pass the string to embed_query
-    return embedding
+    attention_mask = inputs['attention_mask']  # Shape: [batch_size, seq_length]
+    expanded_mask = attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
 
+    summed_embeddings = torch.sum(last_hidden_state * expanded_mask, dim=1)
+    mask_sum = torch.clamp(expanded_mask.sum(dim=1), min=1e-9)  # Avoid division by zero
+    sentence_embedding = (summed_embeddings / mask_sum).squeeze().numpy()
 
-# print(get_embedding("what is the Voltage"))
+    return sentence_embedding
+
+# print(get_embedding('Name of prime minister of india??'))
+
 
 def index_vector(texts):
+    """
+    Index a list of texts into a FAISS index.
+    
+    Args:
+    - texts (list): A list of texts to index.
+    
+    Returns:
+    - index (faiss.Index): FAISS index containing the embeddings.
+    - docstore (dict): A dictionary mapping document indices to text.
+    """
     if not texts:
-        raise ValueError ("Text Input for indexing empty..")
+        raise ValueError("Text Input for indexing is empty..")
 
     vectors = [get_embedding(chunk) for chunk in texts]
     vectors = np.array(vectors)
     
-    # Initialize FAISS index with the embedding dimension
     d = len(vectors[0])  # Get the dimension of the embedding vector
-    index = faiss.IndexFlatL2(d)  # L2 distance for nearest neighbor search
-    
-    # Add the embeddings to the FAISS index
+    index = faiss.IndexFlatL2(d)
     index.add(vectors)
     
-    # Create a document store that maps document IDs to actual texts
     docstore = {i: {"document": texts[i]} for i in range(len(texts))}
     
-    # Create a function to map FAISS index IDs to docstore IDs
+    return index, docstore
+
+# print(index_vector('Name of prime minister of india??'))
+
+
+
+def retrieve_from_faiss(query, index, k=5):
+    """
+    Retrieve the nearest neighbors for a query from the FAISS index.
     
-    # Use the FAISS index and docstore
-    return index
-
-# print(print(index_vector("What is the voltage")))
-
-def retrieve_from_faiss(query,index, k=config_neareset):
-    query_vector = np.array(get_embedding(query)).reshape(1,-1)
-    distances, indices = index.search(query_vector,k)
-    return  indices,distances
-
-# test the code..
-# index = index_vector("Name of Prime Minister of India.")
-# print(retrieve_from_faiss("Name of Prime Minister of India.",index,k=5))
-
-# #llm model , need to initlized the model_type in the json format.
+    Args:
+    - query (str): The query to search for.
+    - index (faiss.Index): The FAISS index to search within.
+    - k (int): The number of nearest neighbors to retrieve.
+    
+    Returns:
+    - indices (numpy.ndarray): The indices of the nearest neighbors.
+    - distances (numpy.ndarray): The distances to the nearest neighbors.
+    """
+    query_vector = np.array(get_embedding(query)).reshape(1, -1)
+    distances, indices = index.search(query_vector, k)
+    return indices, distances
 
 
-def llm_model(question, model_type,temperature=config_temperature):
+def update_context_based_on_feedback(previous_context, question, feedback):
+    """
+    Update the context based on user feedback or previous interactions.
+    
+    Args:
+    - previous_context (str): The previous context provided to the model.
+    - question (str): The current question.
+    - feedback (str): User's feedback or review on the answer.
+    
+    Returns:
+    - updated_context (str): The new context incorporating feedback.
+    """
+    updated_context = previous_context + "\nFeedback: " + feedback + "\nNew Question: " + question
+    return updated_context
+
+
+def llm_model(question, model_type, context=None, temperature=0.3, feedback=None):
+    """
+    Function to handle question answering using an LLM with or without context.
+    
+    Args:
+    - question (str): The question to be answered.
+    - model_type (str): The model type for LLM.
+    - context (str, optional): Context to assist in answering. Default is None.
+    - temperature (float): Temperature for sampling. Default is 0.7.
+    - feedback (str, optional): Feedback or review to adjust the response. Default is None.
+    
+    Returns:
+    - response (str): The answer to the question.
+    """
     try:
-        llm = OllamaLLM(model=model_type,temperature=temperature,top_p=config_top_p,repetition_penalty=config_frequency,max_new_tokens=50)
-        embeddings = OllamaEmbeddings(model=model_type)
-
-        text_data = [question]
-        vectorstore = FAISS.from_texts(texts=text_data, embedding=embeddings)
-        retriever = vectorstore.as_retriever()
-
-        prompt_template = PromptTemplate(
-            input_variables=["question", "context"],
-            template="Context: {context}\n\nQ: {question}\nA: ",
+        llm = OllamaLLM(
+            model=model_type,
+            temperature=temperature,
+            top_p=0.9,
+            repetition_penalty=1.0,
+            max_new_tokens=50,
+            config_presence=0.5
         )
 
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            retriever=retriever,
-            chain_type="stuff",
-            chain_type_kwargs={"prompt": prompt_template},
-        )
+        if context:  # Context provided
+            if feedback:
+                # Update the context based on the feedback and question
+                context = update_context_based_on_feedback(context, question, feedback)
 
-        response = qa_chain.invoke(question)
-        print(f"Response: {response}")  # Debugging: Check what the response looks like
-        
-        # Assuming the response contains an answer as text, directly return it
-        return response  # If the response is not a dictionary, return the text directly
+            # Index and retrieve the context
+            index, docstore = index_vector([context])
+            vectorstore = FAISS.from_texts(texts=[context], embedding=OllamaEmbeddings(model=model_type))
+            retriever = vectorstore.as_retriever()
+
+            prompt_template = PromptTemplate(
+                input_variables=["question", "context"],
+                template="Context: {context}\n\nQ: {question}\nA: "
+            )
+
+            qa_chain = RetrievalQA.from_chain_type(
+                llm=llm,
+                retriever=retriever,
+                chain_type="stuff",
+                chain_type_kwargs={"prompt": prompt_template}
+            )
+
+            response = qa_chain.invoke({"query": question})
+            return response
+
+        else:  # No context provided, directly answer the question
+            index, docstore = index_vector([question])
+            vectorstore_question = FAISS.from_texts(texts=[question], embedding=OllamaEmbeddings(model=model_type))
+            retriever_question = vectorstore_question.as_retriever()
+
+            prompt_template = PromptTemplate(
+                input_variables=["question", "context"],
+                template="Context: {context}\n\nQ: {question}\nA: "
+            )
+
+            qa_chain = RetrievalQA.from_chain_type(
+                llm=llm,
+                retriever=retriever_question,
+                chain_type="stuff",
+                chain_type_kwargs={"prompt": prompt_template}
+            )
+
+
+            response_question = qa_chain.invoke({"query": question})
+            return response_question.get("result", "No answer found")
 
     except Exception as e:
+        logging.error(f"Error in LLM model: {e}")
         raise ValueError(f"Error in LLM model: {e}")
+    
+# print(llm_model("name of c.m of M.P", "llama3.2"))
 
 
-
-# Test the model
-# print(llm_model("Name of Prime Minister of India.","llama3"))
-
-
-
-
-
-def qa_chain_function(question, model_type):
+def qa_chain_function(question, model_type, texts=None):
+    """
+    Handles QA for both general questions and file-based input.
+    
+    Args:
+        question (str): The question to be answered.
+        model_type (str): The model to use for LLM processing.
+        texts (str or None): Text extracted from an uploaded file, if provided.
+    
+    Returns:
+        str: The answer or summary based on the input.
+    """
     try:
-        # model, tokenizer = model_name()
-        text1=[question]
-        chunks = chunk_text(text1)
+        # Case 1: No file uploaded, respond to general question
+        if not texts:
+            print("No file uploaded. Answering general question.")
+            # Answer the question based on the model, passing an empty string as context
+            response = llm_model(question, model_type)
+            if isinstance(response, dict):
+                return response.get("result", "I couldn't find an answer to your question.")
+            else:
+                return response
+
+        # Case 2: File uploaded, process its content
+        print("File uploaded. Processing text from file.")
+        
+        # Ensure texts (from the uploaded file) is valid and chunk it
+        if not isinstance(texts, str) or not texts.strip():
+            return "Uploaded file does not contain valid text for processing."
+        
+        # Chunk the extracted text from the file
+        chunks = chunk_text(texts)
+        if not chunks:
+            return "Unable to chunk text from the uploaded file."
+        
+        # Create vector index for chunks
         index = index_vector(chunks)
+        print(f"Index created with {len(chunks)} chunks.")
+        
+        # Retrieve relevant chunks using FAISS or other retrieval methods
         I, D = retrieve_from_faiss(question, index)
         if len(I[0]) == 0:
-            print("Sorry, I couldn't find any relevant information.")
-        relevant_chunks = [chunks[i] for i in I[0] if i <len(chunks)]
-
-        if not relevant_chunks:
-            print("No relevant chunks found.")
+            return "Sorry, I couldn't find any relevant information in the uploaded file."
         
+        relevant_chunks = [chunks[i] for i in I[0] if i < len(chunks)]
+        if not relevant_chunks:
+            return "No relevant chunks found in the uploaded file."
+        
+        # Process relevant chunks through the model to generate answers
         answer = []
         for chunk in relevant_chunks:
-            response = llm_model(str(chunk), model_type)  # Append the answers
-            # print("Response from llm_model:", response) 
-            if isinstance(response,dict):
+            response = llm_model(question, model_type, str(chunk))
+            if isinstance(response, dict):
                 result = response.get("result", "")
                 if result:
                     answer.append(result)
                 else:
-                    raise ValueError("Empty 'result' key in response.")
+                    print("Empty result in response for a chunk.")
             else:
-                raise ValueError("Response is not a dictionary.")
-        answer = list(set(answer))
-        return "\n".join(answer).strip()
+                print("Unexpected response format for a chunk.")
+        
+        # Deduplicate and join answers
+        final_answers = list(set(answer))
+        return "\n".join(final_answers).strip() or "No relevant information found in the uploaded file."
+
     except Exception as e:
-        raise ValueError(f"Error in QA chain: {e}")
+        return f"Error in QA chain: {e}"
 
-# print(qa_chain_function("what is the voltage?.","llama3"))
 
+
+
+
+
+
+# print(qa_chain_function("what is high pass filter in given text??", "llama3.2", text))
+
+# # print(text)
 
 @app.route("/chatbot", methods=["GET", "POST"])
 def flask_chat():
     answer = ""
     if request.method == "POST":
         try:
+            # Get the uploaded file and question
             file = request.files.get("file")
-            file_type = request.form.get("file_type")
             question = request.form.get("question")
 
-            # Process the file and generate an answer
-            if file and question:
-                file.save(file.filename)
-                file_path =file.filename
-                extract_text = main_text(file_path,file_type)
-                text =clean_text(extract_text)
-                answer = qa_chain_function(question, 'llama3')
-                return answer
+            # Ensure that the file and question are provided
+            if not file or not question:
+                return "Please upload a file and ask a question."
+            
+
+
+            # Save the file locally (make sure the filename is unique to avoid overwriting)
+            file_path = f"uploads/{file.filename}"  # You can create an 'uploads' folder
+            file.save(file_path)
+
+            # Extract text from the file
+            extract_text = pdf_to_text(file_path)  # Assuming pdf_to_text works with a file path
+            if not extract_text:
+                return "No text found in the PDF file."
+
+            # Clean the extracted text (assuming clean_text handles unnecessary formatting)
+            text1 = clean_text(extract_text)
+            print(f"Extracted Text: {text1[:100]}...")  # Display the first 100 characters for debugging
+
+            # Call qa_chain_function with the cleaned text and question
+            answer = qa_chain_function(question, 'llama3.2', text1)
+
         except Exception as e:
             print(f"Error during processing: {e}")
-            answer = "An error occurred. Please try again later......"
+            answer = "An error occurred. Please try again later."
 
     return render_template("chatbot.html", answer=answer)
+
+
 
 
 # # # # for web interfacing..
